@@ -1,0 +1,102 @@
+---
+title: "Practical Machine Learning Prediction Assignment"
+author: "Andrew Gaidus"
+date: "Friday, February 26, 2016"
+output: html_document
+---
+####Background
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+####Data Exploration
+First I will load caret package, and load in the training and test sets which have been saved to my local directory. 
+
+```{r}
+setwd('P:/Documents/DataScience/MachineLearning/CourseProject')
+
+library(caret)
+training<-read.csv("pml-training.csv",na.strings=c("NA","#DIV/0!"))
+testing<-read.csv("pml-testing.csv",na.strings=c("NA","#DIV/0!"))
+dim(training)
+```
+The training set has 19,622 observations and 160 variables.
+
+Let's look at the outcome measure:
+```{r}
+table(training$classe)
+```
+There are 5 different classes and class A is the most common class in the training dataset.
+
+I don't want to predict with all of these 160 variables because some contain missing values and some are really just specific to the user. Let's get rid of variables that contain any missing values as well as the first 7 irrelevant variables. I will do this in both the training and the test sets.
+
+```{r}
+training<-training[, apply(training, 2, function(x) !any(is.na(x)))] 
+training=training[,-c(1:7)]
+
+testing=testing[, apply(testing, 2, function(x) !any(is.na(x)))] 
+testing=testing[,-c(1:7)]
+
+dim(training)
+```
+
+Now I'm down to 53 variables that are available to use in the prediction model.
+
+####Data Partition
+Before I actually go ahead and fit the model, I need to divide the training set into two for or cross validation purposes. I randomly subsample 70% of the set for training purposes and will use the remaining 30% for evaluation of model fit. 
+
+```{r}
+set.seed(519723)
+inTrain <- createDataPartition(y=training$classe, p=0.70, list=FALSE)
+train1  <- training[inTrain,]
+train2  <- training[-inTrain,]
+dim(train1)
+dim(train2)
+```
+
+I will fit the model on the 13,737 observations in the dataset "train1" and then evaluate the fit on the 5,885 observations in "train2" before applying it to our true testing set "testing".
+
+####Modeling
+I will use a Random Forest algorithm, using the caret package in R. I will use all 53 model parameters.
+
+Because it takes a few minutes to run the model, I will also save it to the workspace so it can be loaded back in without re-running.
+
+```{r}
+if (!file.exists("RFModel.Rds"))
+{model <- train(classe~.,
+                  data=train1,
+                  method="rf",
+                  trControl=trainControl(method="cv",number=2),
+                  prox=TRUE,
+                  verbose=TRUE,
+                  allowParallel=TRUE)
+ saveRDS(fitModel, "RFModel.Rds")
+}
+
+model <- readRDS("RFModel.Rds")
+```
+
+####Model Results
+
+Now I will  test the out of sample accuracy by applying the predict function of the dataset "train2", which was not used in making the model.
+
+```{r}
+predictions <- predict(model, newdata=train2)
+confusion_matrix <- confusionMatrix(predictions, train2$classe)
+confusion_matrix
+```
+
+The out of sample accuracy rate is 99.7%
+
+
+
+###Coursera Submission
+Now I will try and answer Coursera's challenge and predict the 20 observations in the "testing" dataset.
+
+```{r}
+predictions <- predict(model, newdata=testing)
+testing$class <- predictions
+submit <- data.frame(problem_id = testing$problem_id, class = predictions)
+submit
+
+```
+
+20 out of 20!
